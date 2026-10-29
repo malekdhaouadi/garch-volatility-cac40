@@ -1,7 +1,6 @@
 data/*.rds
 data/*.csv
 outputs/*.rds
-figures/*.png
 renv/library/
 .Rhistory
 .RData
