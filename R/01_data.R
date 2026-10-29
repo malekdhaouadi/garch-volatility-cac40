@@ -46,7 +46,7 @@ stopifnot(
   !any(is.na(returns))
 )
 
-png("figures/returns_series.png", width = 1200, height = 500)
-plot(returns, main = "CAC 40 daily log returns",
-     ylab = "log return", col = "steelblue")
+png("figures/returns_series.png", width = 1200, height = 500, type = "cairo")
+plot(index(returns), as.numeric(returns), type = "l", col = "steelblue",
+     main = "CAC 40 daily log returns", xlab = "", ylab = "log return")
 dev.off()

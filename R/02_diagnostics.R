@@ -28,11 +28,17 @@ cat("\nJarque-Bera p-value:", format.pval(jb$p.value), "\n")
 cat("Interpretation: p < 0.05 => reject normality => fat tails\n\n")
 
 
-png("figures/returns_and_squared.png", width = 1400, height = 700)
+dates <- index(returns)
+
+ragg::agg_png("figures/returns_and_squared.png",
+              width = 1400, height = 700, units = "px",
+              res = 110, background = "white")
 par(mfrow = c(2, 1), mar = c(3, 4, 2, 1))
-plot(returns, main = "CAC 40 log returns", ylab = "return", col = "steelblue")
-plot(returns^2, main = "Squared returns (proxy for variance)",
-     ylab = "squared return", col = "darkred")
+plot(dates, ret_vec, type = "l", col = "steelblue",
+     main = "CAC 40 log returns", xlab = "", ylab = "return")
+plot(dates, ret_vec^2, type = "l", col = "darkred",
+     main = "Squared returns (proxy for variance)",
+     xlab = "", ylab = "squared return")
 dev.off()
 
 # ljung box 
@@ -68,10 +74,12 @@ for (q in c(5, 10)) {
               q, lm_q$statistic, lm_q$df, format.pval(lm_q$p.value)))
 }
 
-png("figures/qq_returns.png", width = 700, height = 700)
-qqnorm(ret_vec, main = "QQ plot: returns vs Normal",
+ragg::agg_png("figures/qq_returns.png",
+              width = 700, height = 700, units = "px",
+              res = 110, background = "white")
+qqnorm(as.numeric(returns), main = "QQ plot: returns vs Normal",
        pch = 20, cex = 0.5, col = "steelblue")
-qqline(ret_vec, col = "red", lwd = 2)
+qqline(as.numeric(returns), col = "red", lwd = 2)
 dev.off()
 
 diag <- list(
