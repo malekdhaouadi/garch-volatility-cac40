@@ -1,8 +1,16 @@
 # GARCH / EGARCH volatility modelling: CAC 40 and EURO STOXX 50
 
-GARCH(1,1) and EGARCH(1,1) with Student-t innovations (`rugarch`, R): in-sample fit and diagnostics, rolling out-of-sample evaluation (QLIKE, Diebold-Mariano), and a long-sample comparison of 21-day volatility forecasts with VSTOXX implied volatility (2008-2026), and a 1-day VaR / Expected Shortfall backtest.
+GARCH(1,1) and EGARCH(1,1) with Student-t innovations (`rugarch`, R): in-sample fit and diagnostics, rolling out-of-sample evaluation (QLIKE, Diebold-Mariano), a long-sample comparison of 21-day volatility forecasts with VSTOXX implied volatility (2008-2026), and a 1-day VaR / Expected Shortfall backtest with tail-model experiments.
 
 ![Conditional volatility](figures/cond_vol_garch_egarch.png)
+
+## Summary
+
+- In sample, EGARCH is preferred (AIC -6.504 vs -6.458); the leverage term is negative and significant (α₁ = -0.169) and residual diagnostics are clean.
+- 1-day out-of-sample (500 days): QLIKE 1.427 (EGARCH) vs 1.438 (GARCH), Diebold-Mariano p = 0.67, so no significant difference.
+- Against VSTOXX (21-day horizon, 2008-2026): variance risk premium of +3.2 (EURO STOXX 50, from 2011) to +3.9 (CAC 40 proxy, from 2008) vol points. VSTOXX tracks realized volatility better than either model (p <= 0.026); GARCH and EGARCH are indistinguishable once mean levels are removed.
+- VaR 2008-2026: Student-t GARCH and EGARCH under-cover at 1% (exceedance rates 1.48% and 1.81%, Kupiec p <= 0.002) but beat 250-day historical simulation on quantile loss.
+- Skewed-t and empirical-tail variants bring the 1% exceedance rate to 1.04-1.15% on a hold-out (2017-2026) that was not used for selection (baseline: 1.55%). Exceedances of the selected GARCH remain predictable (DQ p = 0.014).
 
 ## Data
 
@@ -14,7 +22,7 @@ CAC 40 returns (2015-2026): skewness -0.83, excess kurtosis 11.19, Jarque-Bera p
 
 ## Models
 
-Mean: constant. Innovations: Student-t. Estimation: ML, robust standard errors.
+Mean: constant. Innovations: Student-t (the VaR experiments below also use a skewed Student-t and zero-mean variants). Estimation: ML, robust standard errors.
 
 - GARCH: σ²ₜ = ω + α·ε²ₜ₋₁ + β·σ²ₜ₋₁
 - EGARCH: ln σ²ₜ = ω + β·ln σ²ₜ₋₁ + α₁·zₜ₋₁ + γ₁·(|zₜ₋₁| − E|z|)
@@ -141,15 +149,42 @@ EGARCH has the lowest RMSE in three of the five regimes and the highest in the t
 ![1% VaR exceedances](figures/var_exceedances_CAC40.png)
 ![Cumulative exceedances](figures/var_cum_exceedances_CAC40.png)
 
+## VaR tail experiments (CAC 40)
+
+The baseline above under-covers: 1.55% of days in 2017-2026 breach the 1% VaR. Sixteen specifications were tried: GARCH/EGARCH x constant/zero mean x Student-t/skewed Student-t x 1,000/2,000-day window, each with two tail estimates: parametric (quantile of the fitted distribution) and filtered historical simulation (FHS: empirical quantile of the window's standardized residuals, rescaled by the forecast volatility). That gives 32 candidates plus the 250-day historical simulation (HS250), all on the same 4,812 days.
+
+Design fixed before running: candidates are ranked on 2008-2016 only (mean |log(exceedance rate / alpha)| at 1% and 5%); results are reported on 2017-2026 (2,512 days), which is not used for selection. A dynamic quantile (DQ) test is added, and a 2.5% level. The two top candidates tied on the selection score (0.0574); the tie was broken by listing order, so the selected model is the GARCH below, and the tied EGARCH is reported alongside it. The baseline ranks 30th of 33 on the selection period.
+
+Hold-out 2017-2026, values at the 1% / 2.5% / 5% levels:
+
+| | Rate (%) | Kupiec p | DQ p | ES test p | Tick loss (x1e4) |
+|---|---|---|---|---|---|
+| Baseline: GARCH, const. mean, Student-t, 1,000 d | 1.55 / 3.90 / 6.53 | 0.010 / 3e-5 / 8e-4 | 5e-4 / 2e-6 / 7e-9 | 0.55 / 0.65 / 0.13 | 3.86 / 7.68 / 12.5 |
+| Selected: GARCH, zero mean, skewed-t, 1,000 d | 1.04 / 2.55 / 5.10 | 0.86 / 0.88 / 0.83 | 0.014 / 0.034 / 8e-5 | 0.70 / 0.56 / 0.53 | 3.86 / 7.63 / 12.5 |
+| EGARCH, const. mean, skewed-t, 2,000 d | 1.15 / 2.39 / 4.82 | 0.45 / 0.72 / 0.67 | 0.41 / 0.79 / 0.028 | 0.49 / 0.21 / 0.28 | 3.71 / 7.42 / 12.1 |
+| EGARCH, zero mean, skewed-t, 2,000 d | 1.11 / 2.35 / 4.62 | 0.57 / 0.62 / 0.37 | 0.44 / 0.81 / 0.061 | 0.49 / 0.25 / 0.24 | 3.71 / 7.42 / 12.1 |
+| HS250 | 1.59 / 2.83 / 5.45 | 0.006 / 0.30 / 0.30 | <1e-14 | 0.042 / 0.011 / 0.035 | 4.64 / 8.48 / 13.6 |
+
+Expected exceedances on the hold-out: 25.1 / 62.8 / 125.6.
+
+- The skewed-t specifications bring exceedance rates close to nominal (1.04-1.15% at the 1% level, against 1.55% for the baseline). Decomposition for GARCH (1,000-day window, 1% level, hold-out): the baseline has 39 exceedances; zero mean alone gives 34, skewed-t alone 30, FHS (empirical residual tail) alone 26, zero mean and skewed-t together 26. Each step changes only a few exceedances (sampling noise about +/-5), so only the baseline against the combined fixes is a visible gap. None of these GARCH variants passes the DQ test at 1% (p <= 0.014), whatever the mean, distribution or tail method; tick loss barely differs (3.84 to 3.91). All 33 candidates are in `outputs/var_experiments_all.csv`.
+- Coverage is not independence: the selected GARCH matches the average rate, but its exceedances remain predictable (independence p = 0.029 at 1%, DQ p = 0.014 and 8e-5 at 1% and 5%). The EGARCH 2,000-day candidates pass the DQ test at 1% and 2.5% and are marginal at 5%. Among constant-mean skewed-t candidates at 1% (hold-out), GARCH with a 1,000-day window fails the DQ test (p = 6.6e-4) while EGARCH 1,000 d (p = 0.27), GARCH 2,000 d (p = 0.45) and EGARCH 2,000 d (p = 0.41) pass, with 26 to 31 exceedances each: either the asymmetry or the longer window is enough, and the two effects cannot be separated here.
+- All skewed-t candidates pass the ES test; HS250 is rejected at all three levels.
+- Tick loss at 1% is 3.71 for the EGARCH 2,000-day candidates against 3.86 for the baseline and the selected model (not tested for significance).
+- Exceedances of the 1% VaR in 2008 and 2020 for the EGARCH skewed-t, 2,000-day candidate: 2 and 7 (the Student-t EGARCH of the previous section: 15 and 11).
+
+![Cumulative exceedances, selected vs baseline](figures/var_experiments_cum_exceedances.png)
+
 ## Limitations
 
-- 21-day windows overlap, so the effective sample is about n/21 (roughly 190 to 230 independent observations); HAC variances account for this approximately. About eight p-values are reported without multiple-testing adjustment.
+- 21-day windows overlap, so the effective sample is about n/21 (roughly 190 to 230 independent observations); HAC variances account for this approximately. No multiple-testing adjustment is applied to any reported p-value.
 - Mean-removed losses use full-sample means: a diagnostic of tracking, not a tradable forecast.
 - The 2008-09 result relies on the CAC 40 as a proxy for the EURO STOXX 50; each regime contains one or few episodes.
 - Implied volatility is risk-neutral, GARCH is physical-measure.
 - Squared returns are a noisy variance proxy (no intraday realized variance). The 1-day evaluation covers only 500 days.
-- Student-t rejected by goodness-of-fit; skewed-t not tested.
-- VaR/ES: about 48 expected exceedances at 1%, so backtests have limited power; ES values assume the Student-t; many p-values are reported without multiple-testing adjustment.
+- Student-t rejected by goodness-of-fit; the skewed-t is used only in the VaR experiments, not in the in-sample fit or the volatility comparison.
+- VaR/ES: about 48 expected exceedances at 1%, so backtests have limited power; ES values assume the fitted distribution.
+- VaR experiments: 33 candidates were evaluated; the selection tie was broken by listing order; the hold-out has about 25 expected exceedances at 1% (26 observed is consistent with true rates of roughly 0.7% to 1.5%).
 
 ## Reproduce
 
@@ -157,7 +192,7 @@ EGARCH has the lowest RMSE in three of the five regimes and the highest in the t
 renv::restore()
 # place data/v2tx_history.csv (stoxx.com, V2TX "History EUR Price")
 # config.yml: data_start: "2000-01-01", eval_start: "2008-01-01"
-for (f in c("01_data", "02_diagnostics", "03_fits", "04_forecast", "06_extended_eval", "07_var_backtest"))
+for (f in c("01_data", "02_diagnostics", "03_fits", "04_forecast", "06_extended_eval", "07_var_backtest", "08_var_experiments"))
   source(sprintf("R/%s.R", f))
 ```
 
