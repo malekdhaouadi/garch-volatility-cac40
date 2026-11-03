@@ -114,6 +114,31 @@ EGARCH has the lowest RMSE in three of the five regimes and the highest in the t
 ![Forecasts vs VSTOXX, CAC 40](figures/ext_iv_vs_garch_CAC40.png)
 ![Forecasts vs VSTOXX, EURO STOXX 50](figures/ext_iv_vs_garch_STOXX50E.png)
 
+## Does GARCH add information beyond VSTOXX? (encompassing regressions)
+
+Realized volatility over the next 21 trading days regressed on VSTOXX and the model's 21-day forecast, using the same out-of-sample origins as above (`R/09_encompassing.R`). Forecasts and VSTOXX are known at the origin date. Newey-West standard errors, lag 20 (lag 40 as a check). Level regressions, vol points:
+
+| | EURO STOXX 50 | CAC 40 (proxy) |
+|---|---|---|
+| Origins / independent 21-day windows | 3,886 / about 185 | 4,769 / about 227 |
+| R²: VSTOXX alone | 0.418 | 0.475 |
+| R²: GARCH alone / EGARCH alone | 0.305 / 0.313 | 0.381 / 0.325 |
+| R²: VSTOXX + GARCH | 0.418 | 0.476 |
+| R²: VSTOXX + EGARCH | 0.423 | 0.476 |
+| GARCH coefficient in VSTOXX + GARCH (t) | +0.006 (0.06) | +0.066 (0.59) |
+| EGARCH coefficient in VSTOXX + EGARCH (t) | +0.186 (1.86) | +0.104 (1.41) |
+| VSTOXX coefficient in those two regressions (t) | +0.788 (9.06) / +0.672 (8.77) | +0.769 (10.36) / +0.763 (10.96) |
+| Slope on VSTOXX alone (t-test of slope = 1) | 0.793 (-4.32) | 0.821 (-3.50) |
+
+In logs, the GARCH coefficient is +0.012 (t = 0.12) and +0.013 (t = 0.14); the EGARCH coefficient is +0.140 (t = 1.76) and +0.142 (t = 2.18, 2.00 at lag 40) for the EURO STOXX 50 and CAC 40.
+
+- VSTOXX encompasses GARCH: adding GARCH changes R² by at most 0.001 and its coefficient is indistinguishable from zero, while VSTOXX remains highly significant (t >= 8.8) in every joint regression.
+- EGARCH: the coefficient is positive in all four regressions (0.10 to 0.19) but significant only in the CAC 40 log specification; the R² gain is at most 0.005. Weak evidence at most.
+- The premium looks proportional to the level: in levels the regression is close to realized = 0.8 x VSTOXX with an intercept near zero (0.10 and 1.09 vol points, t = 0.10 and 1.12) and a slope significantly below 1; in logs the slope is 0.94 to 0.98. A slope below 1 can also reflect noise in the regressor, which these data cannot separate.
+- Sub-periods (descriptive): no model coefficient is significant in the CAC 40 sub-periods 2008-2012, 2013-2019 and 2020-2026. In the EURO STOXX 50 run (which starts 2011-03-23) the 2011-2012 GARCH coefficient is 0.63 (t = 2.29, about 21 independent windows).
+
+![Encompassing regression coefficients](figures/encompassing_coefficients.png)
+
 ## VaR and Expected Shortfall backtest (CAC 40)
 
 1-day-ahead VaR and ES, 4,812 out-of-sample days (2008-01-02 to 2026-10-26). GARCH and EGARCH (Student-t, 1,000-day moving window, refit every 50 days) against a 250-day historical simulation (HS) benchmark. VaR/ES for the Student-t models are computed analytically from the forecast mean, volatility and estimated ν. Tests: Kupiec (unconditional coverage), Christoffersen (independence, conditional coverage), McNeil-Frey ES test (mean of standardized exceedance residuals; one-sided p for ES too optimistic), tick (quantile) loss with Diebold-Mariano.
@@ -185,6 +210,7 @@ Expected exceedances on the hold-out: 25.1 / 62.8 / 125.6.
 - Student-t rejected by goodness-of-fit; the skewed-t is used only in the VaR experiments, not in the in-sample fit or the volatility comparison.
 - VaR/ES: about 48 expected exceedances at 1%, so backtests have limited power; ES values assume the fitted distribution.
 - VaR experiments: 33 candidates were evaluated; the selection tie was broken by listing order; the hold-out has about 25 expected exceedances at 1% (26 observed is consistent with true rates of roughly 0.7% to 1.5%).
+- Encompassing regressions: about 185 to 227 independent windows, so HAC t-statistics may over-reject; regressors are highly correlated (0.80 to 0.88), so individual coefficients are imprecise; sub-period regressions are descriptive.
 
 ## Reproduce
 
@@ -192,7 +218,7 @@ Expected exceedances on the hold-out: 25.1 / 62.8 / 125.6.
 renv::restore()
 # place data/v2tx_history.csv (stoxx.com, V2TX "History EUR Price")
 # config.yml: data_start: "2000-01-01", eval_start: "2008-01-01"
-for (f in c("01_data", "02_diagnostics", "03_fits", "04_forecast", "06_extended_eval", "07_var_backtest", "08_var_experiments"))
+for (f in c("01_data", "02_diagnostics", "03_fits", "04_forecast", "06_extended_eval", "07_var_backtest", "08_var_experiments", "09_encompassing"))
   source(sprintf("R/%s.R", f))
 ```
 
