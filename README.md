@@ -1,6 +1,6 @@
 # GARCH / EGARCH volatility modelling: CAC 40 and EURO STOXX 50
 
-GARCH(1,1) and EGARCH(1,1) with Student-t innovations (`rugarch`, R): in-sample fit and diagnostics, rolling out-of-sample evaluation (QLIKE, Diebold-Mariano), and a long-sample comparison of 21-day volatility forecasts with VSTOXX implied volatility (2008-2026).
+GARCH(1,1) and EGARCH(1,1) with Student-t innovations (`rugarch`, R): in-sample fit and diagnostics, rolling out-of-sample evaluation (QLIKE, Diebold-Mariano), and a long-sample comparison of 21-day volatility forecasts with VSTOXX implied volatility (2008-2026), and a 1-day VaR / Expected Shortfall backtest.
 
 ![Conditional volatility](figures/cond_vol_garch_egarch.png)
 
@@ -106,6 +106,41 @@ EGARCH has the lowest RMSE in three of the five regimes and the highest in the t
 ![Forecasts vs VSTOXX, CAC 40](figures/ext_iv_vs_garch_CAC40.png)
 ![Forecasts vs VSTOXX, EURO STOXX 50](figures/ext_iv_vs_garch_STOXX50E.png)
 
+## VaR and Expected Shortfall backtest (CAC 40)
+
+1-day-ahead VaR and ES, 4,812 out-of-sample days (2008-01-02 to 2026-10-26). GARCH and EGARCH (Student-t, 1,000-day moving window, refit every 50 days) against a 250-day historical simulation (HS) benchmark. VaR/ES for the Student-t models are computed analytically from the forecast mean, volatility and estimated ν. Tests: Kupiec (unconditional coverage), Christoffersen (independence, conditional coverage), McNeil-Frey ES test (mean of standardized exceedance residuals; one-sided p for ES too optimistic), tick (quantile) loss with Diebold-Mariano.
+
+**1% level** (expected exceedances: 48.1)
+
+| | GARCH | EGARCH | HS250 |
+|---|---|---|---|
+| Exceedances (rate) | 71 (1.48%) | 87 (1.81%) | 73 (1.52%) |
+| Kupiec p | 0.002 | 4e-7 | 8e-4 |
+| Independence p | 0.40 | 0.097 | 8e-4 |
+| Conditional coverage p | 0.006 | 7e-7 | 1.4e-5 |
+| ES test: mean residual (one-sided p) | -0.011 (0.46) | -0.146 (0.087) | -0.456 (0.002) |
+| Tick loss (x1e4) | 4.26 | 4.44 | 5.17 |
+
+**5% level** (expected exceedances: 240.6)
+
+| | GARCH | EGARCH | HS250 |
+|---|---|---|---|
+| Exceedances (rate) | 317 (6.59%) | 289 (6.01%) | 259 (5.38%) |
+| Kupiec p | 1.4e-6 | 0.002 | 0.23 |
+| Independence p | 0.002 | 0.17 | 2.5e-9 |
+| Conditional coverage p | 8e-8 | 0.003 | 9e-9 |
+| ES test: mean residual (one-sided p) | -0.060 (0.071) | -0.190 (1e-4) | -0.188 (0.003) |
+| Tick loss (x1e4) | 14.6 | 14.5 | 16.1 |
+
+- All three methods produce too many exceedances at 1% (Kupiec rejected); EGARCH is worst (1.81%).
+- Both GARCH models have lower tick loss than HS at both levels (Diebold-Mariano p <= 0.001). GARCH vs EGARCH is not significant (p = 0.125 at 1%, 0.452 at 5%).
+- Exceedance clustering: independence is rejected for HS at both levels, for GARCH at 5% only, and for EGARCH at neither.
+- ES: the GARCH ES is not rejected at 1% and only marginally at 5% (p = 0.07); EGARCH ES is rejected at 5%; HS underestimates tail losses at both levels.
+- By year (1% VaR): 2008 and 2020 account for 26 of EGARCH's 87 exceedances (15 and 11, Basel red zone is 10+ per 250 days); GARCH has 5 and 8. Outside these two years the rate is still above 1% (GARCH 1.35%, EGARCH 1.42%).
+
+![1% VaR exceedances](figures/var_exceedances_CAC40.png)
+![Cumulative exceedances](figures/var_cum_exceedances_CAC40.png)
+
 ## Limitations
 
 - 21-day windows overlap, so the effective sample is about n/21 (roughly 190 to 230 independent observations); HAC variances account for this approximately. About eight p-values are reported without multiple-testing adjustment.
@@ -114,6 +149,7 @@ EGARCH has the lowest RMSE in three of the five regimes and the highest in the t
 - Implied volatility is risk-neutral, GARCH is physical-measure.
 - Squared returns are a noisy variance proxy (no intraday realized variance). The 1-day evaluation covers only 500 days.
 - Student-t rejected by goodness-of-fit; skewed-t not tested.
+- VaR/ES: about 48 expected exceedances at 1%, so backtests have limited power; ES values assume the Student-t; many p-values are reported without multiple-testing adjustment.
 
 ## Reproduce
 
@@ -121,7 +157,7 @@ EGARCH has the lowest RMSE in three of the five regimes and the highest in the t
 renv::restore()
 # place data/v2tx_history.csv (stoxx.com, V2TX "History EUR Price")
 # config.yml: data_start: "2000-01-01", eval_start: "2008-01-01"
-for (f in c("01_data", "02_diagnostics", "03_fits", "04_forecast", "06_extended_eval"))
+for (f in c("01_data", "02_diagnostics", "03_fits", "04_forecast", "06_extended_eval", "07_var_backtest"))
   source(sprintf("R/%s.R", f))
 ```
 
