@@ -10,8 +10,10 @@ abstract: |
   volatility once mean levels are removed. VSTOXX forecasts realized volatility better than
   either model, encompasses GARCH in encompassing regressions, and exceeds realized volatility
   by about 3 to 4 volatility points on average. Student-t GARCH VaR under-covers at the 1% level
-  (about 1.5% exceedances); a skewed Student-t or a longer estimation window brings the rate close
-  to nominal on a 2017-2026 hold-out.
+  (about 1.5% exceedances); a skewed Student-t distribution or an empirical residual tail brings the
+  rate close to nominal on a 2017-2026 hold-out.
+bibliography: references.bib
+link-citations: true
 format:
   html:
     toc: true
@@ -21,6 +23,7 @@ format:
     toc: true
     number-sections: true
     geometry: margin=2.5cm
+    colorlinks: true
 execute:
   echo: false
   warning: false
@@ -31,35 +34,81 @@ execute:
 #| label: setup
 library(knitr)
 out <- function(f) file.path("..", "outputs", f)
-fig <- function(f) file.path("..", "figures", f)
+
 sci <- function(x, d = 3) formatC(x, format = "g", digits = d)
+fx  <- function(x, d = 2) unname(ifelse(is.na(x), "n/a", formatC(x, format = "f", digits = d)))
+pf  <- function(p) unname(ifelse(is.na(p), "n/a",
+         ifelse(p < 0.001, formatC(p, format = "e", digits = 1), formatC(p, format = "f", digits = 3))))
+
+# Newey-West (Bartlett) standard error of a mean; 21-day windows overlap, so lag 20
+nw_se <- function(x, lag = 20) {
+  x <- x - mean(x); n <- length(x); s <- sum(x^2) / n
+  for (k in 1:lag) s <- s + 2 * (1 - k / (lag + 1)) * sum(x[(k + 1):n] * x[1:(n - k)]) / n
+  sqrt(s / n)
+}
+dm_hac <- function(d) { z <- mean(d) / nw_se(d); c(stat = z, p = 2 * pnorm(-abs(z))) }
+iv_load <- function(label) {
+  d <- read.csv(out(sprintf("ext_iv_comparison_%s.csv", label)))
+  d[complete.cases(d), ]
+}
 ```
 
 <!-- Numbers written in the text were copied from the outputs when this draft was made.
-     Tables and figures are generated from outputs/ and figures/; rerun the R scripts first. -->
+     Tables and figures are generated from outputs/ and figures/ except the two small
+     in-sample tables, which are typed from the console output of R/03_fits.R.
+     Rerun the R scripts first, then check that the text still matches the tables. -->
 
 # Introduction
 
-Financial returns show volatility clustering and, for equity indices, asymmetric responses to
-negative and positive shocks. GARCH-type models are the standard tool for forecasting conditional
-volatility and Value-at-Risk. This report asks four questions on the CAC 40 and the EURO STOXX 50:
+Financial returns show volatility clustering: calm and turbulent periods tend to persist
+[@engle1982; @bollerslev1986]. For equity indices, negative returns also tend to raise volatility
+more than positive returns of the same size, the leverage effect [@black1976], which the exponential
+GARCH (EGARCH) model of @nelson1991 accommodates directly. Both models are widely used to forecast
+volatility and Value-at-Risk (VaR), usually with fat-tailed innovations [@bollerslev1987].
+
+Two literatures frame the questions asked here. On forecasting, surveys report that option-implied
+volatility is often the most informative predictor of future realized volatility [@poon2003], and
+@christensen1998 show with encompassing regressions that implied volatility from S&P 100 options
+contains information that past volatility does not. @hansen2005 compare hundreds of models and find that
+a GARCH(1,1) is hard to beat on exchange rates but is outperformed on equity returns by models with a
+leverage effect. Implied variance also tends to exceed subsequently realized variance, a variance risk
+premium [@carr2009; @bollerslev2009]. On risk, VaR forecasts are judged by the coverage and independence
+of their exceedances [@kupiec1995; @christoffersen1998; @engle2004] and expected shortfall (ES) by the
+losses beyond VaR [@mcneil2000]; filtered historical simulation is a standard way to relax the
+distributional assumption [@barone1999].
+
+This report brings these strands together in one reproducible pipeline for the CAC 40 and the EURO STOXX 50,
+with VSTOXX as the implied volatility benchmark. It asks four questions:
 
 1. Is there a leverage effect, and does an asymmetric model (EGARCH) fit better than GARCH?
 2. Do the models forecast realized volatility as well as the market's implied volatility (VSTOXX)?
 3. Do the models contain information that implied volatility does not (encompassing regressions)?
 4. Are one-day VaR and Expected Shortfall forecasts well calibrated, and what fixes under-coverage?
 
-[TODO: two or three sentences on contribution and structure, and the literature (see comment at the end).]
+In short, EGARCH is preferred in-sample, but its leverage term does not translate into significantly
+better 21-day volatility forecasts; VSTOXX tracks realized volatility better than either model and
+encompasses GARCH; and in this sample the tail specification matters more for one-day VaR calibration than
+the choice between GARCH and EGARCH. Model selection in the VaR experiment follows a rule fixed in advance
+and is evaluated on a hold-out period. The remaining sections describe the data and methods, report the
+results, and discuss limitations.
 
 # Data
 
-- CAC 40 (`^FCHI`) adjusted close from Yahoo Finance. In-sample analysis and the one-day evaluation use
-  2015-01-05 to 2026-10-26 (3,023 returns); the VSTOXX comparison and the VaR work use data from 2000.
+- CAC 40 (`^FCHI`) adjusted close from Yahoo Finance. The in-sample analysis and the one-day evaluation use
+  2015-01-05 to 2026-10-26 (3,023 returns); the VSTOXX comparison and the VaR work have forecast origins from
+  2008 and use data from 2000 for the first estimation windows.
 - EURO STOXX 50 (`^STOXX50E`), Yahoo Finance, from 2007-04-02.
 - VSTOXX (V2TX) daily closes from STOXX, 1999-2026.
 
 Missing prices are dropped, not interpolated. CAC 40 returns (2015-2026) have skewness -0.83 and excess
-kurtosis 11.19 (Jarque-Bera p < 2.2e-16); the Ljung-Box test on squared returns rejects at all lags tested.
+kurtosis 11.19 (Jarque-Bera p < 2.2e-16); the Ljung-Box test on squared returns rejects at all lags tested
+(Q(10) = 1,144.9) and the ARCH-LM test rejects at lags 5 and 10.
+
+With a 1,000-day estimation window, the first forecast origin for the EURO STOXX 50 is 2011-03-23, whereas
+the CAC 40 supports origins from 2008-01-02. The CAC 40 is therefore the only index covering 2008-2010
+in the comparison with VSTOXX, which is an implied volatility on the EURO STOXX 50. Daily returns of the two
+indices correlate at 0.969 over 2007-2026 (0.976 in 2008-2009 and 0.987 in 2020), which supports its use
+as a proxy but does not remove the mismatch.
 
 ![CAC 40 returns and squared returns](../figures/returns_and_squared.png){#fig-returns}
 
@@ -73,30 +122,36 @@ $$\sigma_t^2 = \omega + \alpha\,\varepsilon_{t-1}^2 + \beta\,\sigma_{t-1}^2 \qqu
 
 $$\ln\sigma_t^2 = \omega + \beta\ln\sigma_{t-1}^2 + \alpha_1 z_{t-1} + \gamma_1\left(|z_{t-1}| - E|z|\right) \qquad \text{(EGARCH, rugarch notation)}$$
 
-Models are estimated by maximum likelihood with `rugarch`. A negative $\alpha_1$ means negative shocks raise
-volatility more than positive ones.
+Models are estimated by maximum likelihood with the R package `rugarch`, using robust standard errors.
+In `rugarch`, $\alpha_1$ is the sign (leverage) coefficient and $\gamma_1$ the magnitude coefficient; a
+negative $\alpha_1$ means negative shocks raise volatility more than positive ones. The tail experiment also
+uses the skewed Student-t distribution of `rugarch`, which follows @fernandez1998.
 
 ## Out-of-sample design
 
 Rolling estimation with a moving window of 1,000 days (2,000 days in the tail experiment), parameters
-re-estimated every 50 days. Forecast evaluation uses QLIKE and squared-error losses, Diebold-Mariano tests,
-and Newey-West (HAC) variances where forecast windows overlap.
+re-estimated every 50 days. One-day variance forecasts are scored with QLIKE and squared-error losses,
+both robust to noise in the variance proxy [@patton2011], and compared with Diebold-Mariano tests
+[@diebold1995]. Where forecast windows overlap, variances are Newey-West (HAC) estimates [@newey1987].
 
 ## Comparison with implied volatility
 
 VSTOXX is a 30-calendar-day implied volatility, so model forecasts are averaged over the next 21 trading
 days. Realized volatility is measured over the 21 trading days after each forecast origin. The variance
-risk premium is VSTOXX minus subsequent realized volatility. Encompassing regressions regress realized
-volatility on VSTOXX and a model forecast, with Newey-West standard errors (lag 20, with lag 40 as a check).
+risk premium is VSTOXX minus subsequent realized volatility. Encompassing regressions [@christensen1998]
+regress realized volatility on VSTOXX and a model forecast, with Newey-West standard errors (lag 20, with
+lag 40 as a check). To separate tracking from bias, losses are also computed after removing each series'
+full-sample mean level; this is a diagnostic, not a tradable forecast.
 
 ## VaR and Expected Shortfall
 
-One-day 1%, 2.5% and 5% VaR and ES. Tests: Kupiec (coverage), Christoffersen (independence), dynamic
-quantile, and a McNeil-Frey exceedance-residual test for ES, plus tick loss with Diebold-Mariano tests. A
-tail experiment varies the mean (constant or zero), the distribution (Student-t or skewed Student-t), the
-window (1,000 or 2,000 days) and the tail estimate (parametric or filtered historical simulation). Candidates
-are ranked on 2008-2016 by the mean of |log(exceedance rate / nominal level)| at 1% and 5%, a rule fixed
-before running, and reported on 2017-2026, which is not used for selection.
+One-day 1%, 2.5% and 5% VaR and ES. Tests: Kupiec (coverage) [@kupiec1995], Christoffersen (independence
+and conditional coverage) [@christoffersen1998], the dynamic quantile test [@engle2004], and a McNeil-Frey
+exceedance-residual test for ES [@mcneil2000], plus tick loss with Diebold-Mariano tests. A tail experiment
+varies the mean (constant or zero), the distribution (Student-t or skewed Student-t), the window
+(1,000 or 2,000 days) and the tail estimate (parametric, or filtered historical simulation
+[@barone1999]). Candidates are ranked on 2008-2016 by the mean of |log(exceedance rate / nominal level)|
+at 1% and 5%, a rule fixed before running, and reported on 2017-2026, which is not used for selection.
 
 # Results
 
@@ -116,9 +171,31 @@ e <- read.csv(out("params_egarch.csv"), check.names = FALSE)
 kable(e, digits = 4, booktabs = TRUE)
 ```
 
-EGARCH is preferred by AIC (-6.504 vs -6.458), BIC and log-likelihood (9,836 vs 9,766). The leverage term
-is negative and significant (@tbl-egarch). Standardized residuals show no remaining autocorrelation or ARCH
-effects; the Student-t goodness-of-fit test is rejected.
+```{r}
+#| label: tbl-fit
+#| tbl-cap: "In-sample model comparison and residual diagnostics (p-values), CAC 40 2015-2026."
+# Typed from the console output of R/03_fits.R
+fit_tab <- data.frame(
+  Measure = c("Log-likelihood", "AIC (per observation)", "BIC (per observation)",
+              "Persistence (GARCH: alpha + beta; EGARCH: beta)", "Half-life of a shock (days)",
+              "Ljung-Box on z, lag 10 / 20", "Ljung-Box on z squared, lag 10 / 20",
+              "ARCH-LM on z, q = 5 / 10"),
+  GARCH  = c("9,766.1", "-6.4579", "-6.4479", "0.9725", "24.9",
+             "0.985 / 0.876", "0.515 / 0.847", "0.255 / 0.577"),
+  EGARCH = c("9,836.2", "-6.5036", "-6.4916", "0.9692", "22.2",
+             "0.957 / 0.786", "0.916 / 0.993", "0.653 / 0.931"))
+kable(fit_tab, booktabs = TRUE, align = "lrr")
+```
+
+EGARCH is preferred by AIC, BIC and log-likelihood (@tbl-fit). Its sign coefficient $\alpha_1$ is negative
+and highly significant (@tbl-egarch): a one-unit negative standardized shock raises log-variance by about
+0.30, whereas a one-unit positive shock lowers it by about 0.04 (@fig-nic). Standardized residuals of both
+models show no remaining autocorrelation or ARCH effects. For EGARCH, the sign bias test (joint p = 0.46) and
+the Nyblom stability test (joint statistic 1.25, below the 10% critical value of 1.49) raise no concern, but
+the adjusted Pearson goodness-of-fit test rejects the Student-t distribution (p < 0.01). The GARCH
+intercept $\omega$ is not significant (p = 0.52), so its implied long-run volatility (about 20% annualized)
+is imprecise. The extremely small standard error on the EGARCH $\beta$ is an optimizer artifact: $\omega$ and
+$\beta$ are nearly collinear in the log-variance recursion.
 
 ![EGARCH news impact curve](../figures/news_impact_egarch.png){#fig-nic}
 
@@ -136,21 +213,94 @@ kable(data.frame(Loss = c("QLIKE", "MSE"),
                  GARCH = c(sci(mean(Lg), 4), sci(mean(Sg), 4)),
                  EGARCH = c(sci(mean(Le), 4), sci(mean(Se), 4)),
                  `DM p-value` = c(sci(dm(Lg, Le), 2), sci(dm(Sg, Se), 2)),
-                 check.names = FALSE), booktabs = TRUE)
+                 check.names = FALSE), booktabs = TRUE, align = "lrrr")
 ```
+
+EGARCH has the lower average loss under both measures (@tbl-oos), but the QLIKE difference is not
+statistically significant (p = 0.67). The squared-error difference is (p = 0.016), but that loss is more
+sensitive to a few extreme days than QLIKE, so the evidence for EGARCH out-of-sample is weak, even though
+it is clearly preferred in-sample. All 10 refits per model converged.
 
 ## Forecasts against VSTOXX
 
 ```{r}
-#| label: tbl-regime
-#| tbl-cap: "CAC 40 21-day forecasts against VSTOXX by regime (vol points). vrp = VSTOXX minus subsequent realized volatility."
-reg <- read.csv(out("ext_iv_by_regime_CAC40.csv"))
-kable(reg[, c("period", "n", "vrp", "rmse_garch", "rmse_egarch", "rmse_vstoxx")],
-      digits = 2, booktabs = TRUE)
+#| label: tbl-iv-stoxx
+#| tbl-cap: "EURO STOXX 50 (like for like): 21-day forecasts against VSTOXX and realized volatility, 3,886 origins from 2011-03-23 (vol points, annualized). Mean error = forecast minus realized."
+iv_table <- function(label) {
+  d <- iv_load(label)
+  f <- list(GARCH = d$garch, EGARCH = d$egarch, VSTOXX = d$implied)
+  rmse <- function(a, b) sqrt(mean((a - b)^2)); dem <- function(v) v - mean(v)
+  data.frame(
+    Series = names(f),
+    `Corr. with VSTOXX` = fx(c(cor(d$garch, d$implied), cor(d$egarch, d$implied), NA), 3),
+    `Mean error` = fx(sapply(f, function(x) mean(x - d$rv_fwd)), 2),
+    RMSE = fx(sapply(f, function(x) rmse(x, d$rv_fwd)), 2),
+    `Corr. with realized` = fx(sapply(f, function(x) cor(x, d$rv_fwd)), 3),
+    `RMSE, mean removed` = fx(sapply(f, function(x) rmse(dem(x), dem(d$rv_fwd))), 2),
+    check.names = FALSE, row.names = NULL)
+}
+kable(iv_table("STOXX50E"), booktabs = TRUE, align = "lrrrrr")
 ```
 
-[TODO: full-sample table (correlations, mean error, RMSE, mean-removed RMSE, Diebold-Mariano with HAC) from
-the console output of `R/06_extended_eval.R`; or save that table to a CSV in the script and read it here.]
+```{r}
+#| label: tbl-iv-cac
+#| tbl-cap: "CAC 40 (VSTOXX as a proxy): same measures, 4,769 origins from 2008-01-02."
+kable(iv_table("CAC40"), booktabs = TRUE, align = "lrrrrr")
+```
+
+```{r}
+#| label: tbl-vrp
+#| tbl-cap: "Variance risk premium: VSTOXX minus realized volatility over the following 21 trading days (vol points; Newey-West lag 20)."
+vrp_row <- function(label, name) {
+  d <- iv_load(label); v <- d$implied - d$rv_fwd
+  data.frame(Run = name, Origins = nrow(d), `Mean premium` = fx(mean(v)),
+             `NW s.e.` = fx(nw_se(v)), `Share positive (%)` = fx(100 * mean(v > 0), 0),
+             check.names = FALSE)
+}
+kable(rbind(vrp_row("STOXX50E", "EURO STOXX 50"), vrp_row("CAC40", "CAC 40")),
+      booktabs = TRUE, row.names = FALSE, align = "lrrrr")
+```
+
+```{r}
+#| label: tbl-dm
+#| tbl-cap: "Diebold-Mariano tests on squared error against realized volatility, Newey-West lag 20. Statistic (p-value); a positive statistic means the second model has the lower loss."
+iv_dm <- function(label) {
+  d <- iv_load(label)
+  loss  <- function(f) (f - d$rv_fwd)^2
+  lossd <- function(f) ((f - mean(f)) - (d$rv_fwd - mean(d$rv_fwd)))^2
+  r <- list("GARCH vs EGARCH, raw"                 = dm_hac(loss(d$garch)   - loss(d$egarch)),
+            "GARCH vs EGARCH, mean removed"        = dm_hac(lossd(d$garch)  - lossd(d$egarch)),
+            "EGARCH vs VSTOXX, mean removed"       = dm_hac(lossd(d$egarch) - lossd(d$implied)),
+            "GARCH vs VSTOXX, mean removed"        = dm_hac(lossd(d$garch)  - lossd(d$implied)))
+  sapply(r, function(x) sprintf("%+.2f (%s)", x["stat"], pf(x["p"])))
+}
+dm_s <- iv_dm("STOXX50E"); dm_c <- iv_dm("CAC40")
+kable(data.frame(Comparison = names(dm_s), `EURO STOXX 50` = unname(dm_s), `CAC 40` = unname(dm_c),
+                 check.names = FALSE), booktabs = TRUE, align = "lrr")
+```
+
+VSTOXX exceeded subsequently realized volatility by about 3.2 vol points on the EURO STOXX 50 run
+and 3.9 on the CAC 40 run, on roughly 80% of origins (@tbl-vrp), consistent with a variance risk premium.
+Ranking the series by how well they track realized volatility (@tbl-iv-stoxx, @tbl-iv-cac), VSTOXX has the
+highest correlation with realized volatility (0.65 and 0.69 against 0.55 to 0.62 for the models) and the
+lowest RMSE once mean levels are removed. After that adjustment, VSTOXX is significantly better than EGARCH
+(p = 0.026 and 0.003) and than GARCH (p = 0.002 and 0.001), while GARCH and EGARCH are indistinguishable
+(p = 0.45 and 0.46) (@tbl-dm). EGARCH's lower raw RMSE on the EURO STOXX 50 (7.42 against 7.95; p = 0.024)
+reflects a smaller bias (mean error +0.05 against +2.47) and not better tracking; on the CAC 40 the raw
+difference is not distinguishable from zero (p = 0.945).
+
+```{r}
+#| label: tbl-regime
+#| tbl-cap: "CAC 40 21-day forecasts against VSTOXX by regime (vol points). Premium = VSTOXX minus subsequent realized volatility."
+reg <- read.csv(out("ext_iv_by_regime_CAC40.csv"))
+kable(reg[, c("period", "n", "vrp", "rmse_garch", "rmse_egarch", "rmse_vstoxx")],
+      digits = 2, booktabs = TRUE,
+      col.names = c("Period", "n", "Premium", "RMSE GARCH", "RMSE EGARCH", "RMSE VSTOXX"))
+```
+
+By regime (@tbl-regime), EGARCH has the lowest RMSE in three of the five periods and the highest in the two
+crises (2008-2009 and 2020). The premium is smallest in 2020 (+0.9). The EURO STOXX 50 run shows the same pattern
+from 2011 onward. I have not tested why EGARCH does worst in the crises, and each crisis is a single episode.
 
 ![CAC 40: forecasts and VSTOXX](../figures/ext_iv_vs_garch_CAC40.png){#fig-iv-cac}
 
@@ -160,16 +310,49 @@ the console output of `R/06_extended_eval.R`; or save that table to a CSV in the
 
 ```{r}
 #| label: tbl-enc
-#| tbl-cap: "Realized 21-day volatility on VSTOXX and a model forecast (levels, Newey-West lag 20 t-statistics; t40 = lag 40)."
+#| tbl-cap: "Regressions of realized 21-day volatility on VSTOXX and model forecasts (levels unless stated; coefficient with Newey-West lag-20 t-statistic in parentheses)."
 enc <- read.csv(out("encompassing_regressions.csv"))
-sub <- subset(enc, scale == "vol" & spec %in% c("4: implied + GARCH", "5: implied + EGARCH") &
-                term != "(Intercept)")
-kable(sub[, c("dataset", "spec", "term", "est", "t20", "t40", "r2")], digits = 3,
-      row.names = FALSE, booktabs = TRUE)
+g1 <- function(ds, sp, tm, col, sc = "vol")
+  enc[enc$dataset == ds & enc$scale == sc & enc$spec == sp & enc$term == tm, col]
+ct <- function(ds, sp, tm, sc = "vol")
+  sprintf("%+.3f (%+.2f)", g1(ds, sp, tm, "est", sc), g1(ds, sp, tm, "t20", sc))
+enc_col <- function(ds) c(
+  fx(g1(ds, "1: implied", "implied", "r2"), 3),
+  fx(g1(ds, "2: GARCH", "garch", "r2"), 3),
+  fx(g1(ds, "3: EGARCH", "egarch", "r2"), 3),
+  fx(g1(ds, "4: implied + GARCH", "garch", "r2"), 3),
+  fx(g1(ds, "5: implied + EGARCH", "egarch", "r2"), 3),
+  ct(ds, "4: implied + GARCH", "garch"),
+  ct(ds, "5: implied + EGARCH", "egarch"),
+  ct(ds, "4: implied + GARCH", "implied"),
+  ct(ds, "5: implied + EGARCH", "implied"),
+  sprintf("%.3f (%+.2f)", g1(ds, "1: implied", "implied", "est"),
+          (g1(ds, "1: implied", "implied", "est") - 1) / g1(ds, "1: implied", "implied", "se20")),
+  ct(ds, "4: implied + GARCH", "garch", "log"),
+  ct(ds, "5: implied + EGARCH", "egarch", "log"))
+enc_labels <- c("R-squared: VSTOXX alone", "R-squared: GARCH alone", "R-squared: EGARCH alone",
+                "R-squared: VSTOXX + GARCH", "R-squared: VSTOXX + EGARCH",
+                "GARCH coefficient in VSTOXX + GARCH", "EGARCH coefficient in VSTOXX + EGARCH",
+                "VSTOXX coefficient in VSTOXX + GARCH", "VSTOXX coefficient in VSTOXX + EGARCH",
+                "Slope on VSTOXX alone (t-test of slope = 1)",
+                "GARCH coefficient, log specification", "EGARCH coefficient, log specification")
+kable(data.frame(Measure = enc_labels, `EURO STOXX 50` = enc_col("STOXX50E"),
+                 `CAC 40 (proxy)` = enc_col("CAC40"), check.names = FALSE),
+      booktabs = TRUE, align = "lrr")
 ```
 
-VSTOXX remains highly significant when a model forecast is added, while GARCH adds nothing and EGARCH
-adds at most a little (@tbl-enc).
+VSTOXX remains highly significant when a model forecast is added (t above 8.7 in every joint regression),
+while the GARCH coefficient is indistinguishable from zero in both runs and in logs (@tbl-enc).
+Adding GARCH changes the R-squared by at most 0.001. The EGARCH coefficient is positive in all four
+regressions (0.10 to 0.19) but significant only in the CAC 40 log specification (t = 2.18, and 2.00 with a
+lag-40 correction), and the R-squared gain is at most 0.005; this is weak evidence at most. In the
+sub-periods, no model coefficient is significant for the CAC 40; in 2011-2012 on the EURO STOXX 50 the GARCH
+coefficient is 0.63 (t = 2.29), but that sample has about 21 independent windows.
+
+In levels, the regression on VSTOXX alone is close to realized = 0.8 x VSTOXX, with an intercept near zero
+(0.10 and 1.09 vol points, neither significant) and a slope significantly below one; in logs the slope is
+0.94 to 0.98. The premium therefore looks proportional to the volatility level and not a constant number
+of points. A slope below one can also arise from noise in the regressor, which these data cannot separate.
 
 ![Encompassing regression coefficients](../figures/encompassing_coefficients.png){#fig-enc}
 
@@ -177,49 +360,108 @@ adds at most a little (@tbl-enc).
 
 ```{r}
 #| label: tbl-var
-#| tbl-cap: "One-day VaR backtest, CAC 40, 2008-2026 (Student-t models, constant mean, 1,000-day window)."
+#| tbl-cap: "One-day VaR backtest, CAC 40, 4,812 days (2008-2026). Student-t models with constant mean and a 1,000-day window; HS250 = 250-day historical simulation. ES p = one-sided p-value that losses beyond VaR exceed the forecast ES."
 v <- read.csv(out("var_backtest_CAC40.csv"))
-kable(v[, c("alpha", "model", "exceed", "rate_pct", "kupiec_p", "indep_p", "cc_p", "es_p_less", "tick_x1e4")],
-      digits = 3, row.names = FALSE, booktabs = TRUE)
+v <- v[order(v$alpha), ]
+kable(data.frame(Level = sprintf("%.0f%%", 100 * v$alpha), Model = v$model,
+                 `Exceed.` = v$exceed, `Rate (%)` = fx(v$rate_pct, 2),
+                 `Kupiec p` = pf(v$kupiec_p), `Indep. p` = pf(v$indep_p),
+                 `Cond. cov. p` = pf(v$cc_p), `ES p` = pf(v$es_p_less),
+                 `Tick loss (x1e4)` = fx(v$tick_x1e4, 2), check.names = FALSE),
+      booktabs = TRUE, row.names = FALSE, align = "llrrrrrrr")
 ```
+
+Over 2008-2026 the 1% VaR was breached on 1.48% (GARCH), 1.81% (EGARCH) and 1.52% (HS250) of days against
+a nominal 1% (48.1 expected exceedances in 4,812 days), and the Kupiec test rejects for all three
+(@tbl-var). Both GARCH models have lower tick loss than historical simulation (Diebold-Mariano p at most
+0.001) but are not distinguishable from each other. The GARCH ES passes the McNeil-Frey test at 1% (p = 0.46),
+while historical simulation underestimates tail losses (p = 0.002). EGARCH is the worst on coverage: 2008 and
+2020 contribute 26 of its 87 exceedances, but outside those two years its rate is still 1.42% (GARCH: 1.35%).
 
 ```{r}
 #| label: tbl-exp
-#| tbl-cap: "Tail experiment, hold-out 2017-2026 (candidates not used for selection)."
+#| tbl-cap: "Tail experiment, hold-out 2017-2026 (2,512 days; not used for selection). DQ p = dynamic quantile test; ES p as in the previous table."
 a <- read.csv(out("var_experiments_all.csv"))
-a$candidate <- gsub("\\|", " / ", a$candidate)
-keep <- gsub("\\|", " / ", c("sGARCH_mC_std_W1000|param", "sGARCH_m0_sstd_W1000|param",
-                              "eGARCH_mC_sstd_W2000|param", "eGARCH_m0_sstd_W2000|param", "HS250"))
-h <- subset(a, period == "hold-out 2017-2026" & candidate %in% keep)
-kable(h[order(h$alpha), c("alpha", "candidate", "exceed", "rate_pct", "kupiec_p", "dq_p", "es_p_less", "tick_x1e4")],
-      digits = 3, row.names = FALSE, booktabs = TRUE)
+lab <- c("sGARCH_mC_std_W1000|param"  = "Baseline: GARCH, const. mean, Student-t, 1,000 d",
+         "sGARCH_m0_sstd_W1000|param" = "Selected: GARCH, zero mean, skewed-t, 1,000 d",
+         "eGARCH_mC_sstd_W2000|param" = "EGARCH, const. mean, skewed-t, 2,000 d",
+         "eGARCH_m0_sstd_W2000|param" = "EGARCH, zero mean, skewed-t, 2,000 d",
+         "HS250"                      = "Historical simulation, 250 d")
+h <- a[a$period == "hold-out 2017-2026" & a$candidate %in% names(lab), ]
+h$spec <- factor(unname(lab[h$candidate]), levels = unname(lab))
+h <- h[order(h$alpha, h$spec), ]
+kable(data.frame(Level = sprintf("%.1f%%", 100 * h$alpha), Specification = as.character(h$spec),
+                 `Exceed.` = h$exceed, `Rate (%)` = fx(h$rate_pct, 2), `Kupiec p` = pf(h$kupiec_p),
+                 `DQ p` = pf(h$dq_p), `ES p` = pf(h$es_p_less),
+                 `Tick loss (x1e4)` = fx(h$tick_x1e4, 2), check.names = FALSE),
+      booktabs = TRUE, row.names = FALSE, align = "llrrrrrr")
 ```
 
-![Cumulative 1% VaR exceedances](../figures/var_experiments_cum_exceedances.png){#fig-cum}
+The baseline under-covers on the hold-out as well: 1.55% of days breach the 1% VaR (39 against 25.1 expected;
+Kupiec p = 0.010). Sixteen specifications (GARCH or EGARCH, constant or zero mean, Student-t or skewed
+Student-t, 1,000 or 2,000 days) were each combined with a parametric and a filtered historical simulation tail,
+giving 33 candidates with the historical simulation benchmark. The baseline ranks 30th of 33 on 2008-2016. The two
+top candidates tied on the selection score; the tie was broken by listing order, so the selected model is the
+zero-mean skewed-t GARCH, and the tied EGARCH with a 2,000-day window is reported alongside it (@tbl-exp).
 
-[TODO: three or four sentences: baseline under-covers; skewed-t / longer window bring rates near nominal;
-GARCH 1,000 d still fails the dynamic quantile test while the others pass; the selection tie.]
+On the hold-out, the skewed-t specifications bring the exceedance rate to 1.04-1.15% at 1% (Kupiec p of 0.44
+or more) and pass the ES test at all three levels (p above 0.2), while historical simulation fails it
+(p = 0.042, 0.011 and 0.035 at 1%, 2.5% and 5%). For GARCH with a 1,000-day window, zero mean alone cuts
+the 39 exceedances to 34, the skewed-t alone to 30, the empirical residual tail (filtered historical
+simulation) alone to 26, and zero mean with skewed-t also to 26. Each step changes only a few exceedances, with
+sampling noise of about five, so only the baseline against the combined fixes is a visible gap.
+
+Matching the average rate does not make the exceedances unpredictable. The selected GARCH fails the dynamic
+quantile test at 1% (p = 0.014) and its exceedances are clustered (independence p = 0.029), whereas the EGARCH
+with a 2,000-day window passes (p = 0.41). Among constant-mean skewed-t models at 1%, only GARCH with a
+1,000-day window fails (p = 6.6e-4); EGARCH with 1,000 days (0.27), GARCH with 2,000 days (0.45) and EGARCH
+with 2,000 days (0.41) pass, with 26 to 31 exceedances each. Either the asymmetry or the longer window is
+therefore enough, and the two effects cannot be separated here. In the two crisis years, the EGARCH with a
+2,000-day window has 2 (2008) and 7 (2020) exceedances of the 1% VaR, against 15 and 11 for the Student-t
+EGARCH of the baseline. Its tick loss at 1% is lower (3.71 against 3.86), which I did not test for significance.
+
+![Cumulative 1% VaR exceedances: selected model, baseline and historical simulation](../figures/var_experiments_cum_exceedances.png){#fig-cum}
 
 # Limitations
 
-- 21-day windows overlap: about 185 to 227 independent windows per run, so HAC tests may over-reject.
-- The 2008-2009 comparison with VSTOXX uses the CAC 40 as a proxy for the EURO STOXX 50.
-- Squared returns are a noisy variance proxy; no intraday realized variance is used.
-- Implied volatility is risk-neutral, GARCH is physical-measure.
-- 33 VaR candidates were evaluated; the selection tie was broken by listing order; the hold-out has about
-  25 expected exceedances at 1%.
-- Many p-values are reported without multiple-testing adjustment.
+- 21-day windows overlap: there are about 185 to 227 independent windows per run, so HAC tests may over-reject;
+  the lag-40 check agrees with lag 20 almost everywhere.
+- The like-for-like EURO STOXX 50 run starts in March 2011, so 2008-2010 is covered only by the CAC 40 proxy.
+- Squared returns are a noisy variance proxy and no intraday realized variance is used.
+- Implied volatility is risk-neutral, whereas GARCH is estimated under the physical measure, so the two are
+  not directly interchangeable.
+- Each crisis regime is one or a few episodes; the sub-period regressions are descriptive.
+- 33 VaR candidates were evaluated, the selection tie was broken by listing order, and the hold-out has
+  about 25 expected exceedances at 1%, so coverage tests have limited power. Many p-values are reported
+  without multiple-testing adjustment.
+- Parametric ES values assume the fitted distribution; the Student-t is rejected by a goodness-of-fit test and
+  the skewed-t was not tested in-sample.
+- Mean-removed losses use full-sample means.
 
 # Conclusion
 
-[TODO: five or six sentences. Answer the four questions in order, with the numbers.]
+EGARCH fits the CAC 40 better than GARCH in-sample, and its sign coefficient confirms a leverage effect
+(question 1). Out of sample, that advantage does not carry over to 21-day volatility forecasts: once mean levels
+are removed, GARCH and EGARCH are indistinguishable (p = 0.45 and 0.46), and EGARCH's lower raw error comes mainly
+from smaller bias (question 2). VSTOXX tracks realized volatility significantly better than either model, exceeds
+it by about 3 to 4 vol points on average, and encompasses GARCH, whose coefficient is zero in joint regressions;
+EGARCH adds at most a little (question 3). For one-day risk, a Student-t GARCH or EGARCH with a 1,000-day
+window under-covers the 1% VaR (1.5% to 1.8% exceedances); a skewed Student-t distribution (with a 1,000- or 2,000-day window) or an empirical residual tail brings the
+hold-out rate close to nominal and the ES test is passed, although exceedances can remain predictable unless
+the specification also has the asymmetry or the longer window (question 4).
+In this sample, the tail specification mattered more for VaR calibration than the choice between GARCH and EGARCH.
 
-# Reproducibility {.appendix}
+Practically, GARCH-type models are useful as a free, well-calibrated risk baseline when the tail is handled
+carefully, but the market's implied volatility is the better forecast of realized volatility. Natural extensions
+are a VaR built from implied volatility, realized variance from intraday data, and regime-switching models.
 
-Code and data pipeline: scripts `R/01_data.R` to `R/09_encompassing.R`, parameters in `config.yml`,
-dependencies locked with `renv`. VSTOXX data downloaded from stoxx.com.
+# References {.unnumbered}
 
-<!-- References to add (verify details before citing): Engle (1982); Bollerslev (1986); Nelson (1991);
-     Diebold and Mariano (1995); Newey and West (1987); Kupiec (1995); Christoffersen (1998);
-     McNeil and Frey (2000); Engle and Manganelli (2004); Patton (2011) on QLIKE;
-     Barone-Adesi, Giannopoulos and Vosper (1999) on filtered historical simulation. -->
+::: {#refs}
+:::
+
+# Reproducibility {.unnumbered}
+
+All results are generated by the scripts `R/01_data.R` to `R/09_encompassing.R`, with parameters in
+`config.yml` and dependencies locked with `renv`. VSTOXX data were downloaded manually from stoxx.com.
+This document reads the saved results in `outputs/` and `figures/`.
