@@ -1,0 +1,89 @@
+fetch_prices <- function(symbol, from, to, retries = 3, pause = 5) {
+  stopifnot(is.character(symbol), length(symbol) == 1)
+  for (i in seq_len(retries)) {
+    px <- tryCatch(quantmod::getSymbols(symbol, from = from, to = to, auto.assign = FALSE),
+                   error = function(e) NULL)
+    if (!is.null(px)) {
+      px <- quantmod::Ad(px); colnames(px) <- "adj_close"
+      return(px)
+    }
+    if (i < retries) Sys.sleep(pause)
+  }
+  stop(sprintf("Could not download %s after %d attempts", symbol, retries))
+}
+
+drop_na_prices <- function(prices) {
+  bad <- is.na(prices)
+  out <- prices[!bad]
+  attr(out, "dropped") <- as.character(zoo::index(prices)[bad])
+  out
+}
+
+compute_log_returns <- function(prices) {
+  r <- na.omit(diff(log(prices)))
+  attr(r, "na.action") <- NULL
+  colnames(r) <- "ret"
+  r
+}
+
+get_returns <- function(symbol, from, to, validate = TRUE, ...) {
+  px <- drop_na_prices(fetch_prices(symbol, from, to))
+  if (validate) assert_valid_prices(px, ...)
+  compute_log_returns(px)
+}
+
+# VSTOXX / index history files from stoxx.com: "Date;Symbol;Indexvalue", dd.mm.yyyy
+read_stoxx_file <- function(path) {
+  raw <- suppressWarnings(read.table(path, sep = ";", header = TRUE,
+                                     dec = ".", stringsAsFactors = FALSE))
+  if (!all(c("Date", "Indexvalue") %in% names(raw)))
+    stop(path, ": expected columns Date;Symbol;Indexvalue, found: ",
+         paste(names(raw), collapse = ", "))
+  xts::xts(raw$Indexvalue, as.Date(raw$Date, format = "%d.%m.%Y"))
+}
+
+validate_prices <- function(prices, min_obs = 500, max_gap_days = 10,
+                            max_abs_return = 0.30, max_zero_return_share = 0.02,
+                            max_staleness_days = NULL, today = Sys.Date()) {
+  px <- as.numeric(prices); d <- zoo::index(prices)
+  chk <- function(name, ok, detail)
+    data.frame(check = name, ok = isTRUE(ok), detail = detail, stringsAsFactors = FALSE)
+  res <- list()
+  res$n   <- chk("enough observations", length(px) >= min_obs,
+                 sprintf("%d (minimum %d)", length(px), min_obs))
+  res$na  <- chk("no missing prices", !anyNA(px), sprintf("%d missing", sum(is.na(px))))
+  ok_px <- px[!is.na(px)]
+  res$pos <- chk("prices strictly positive", all(ok_px > 0),
+                 sprintf("%d non-positive", sum(ok_px <= 0)))
+  res$inc <- chk("dates strictly increasing", !is.unsorted(d, strictly = TRUE),
+                 sprintf("%d duplicated or unordered dates", sum(diff(as.numeric(d)) <= 0)))
+  gaps <- as.numeric(diff(d))
+  res$gap <- chk("no long gaps", length(gaps) == 0 || max(gaps) <= max_gap_days,
+                 sprintf("longest gap %d days (maximum %d)",
+                         if (length(gaps)) as.integer(max(gaps)) else 0L, max_gap_days))
+  r <- suppressWarnings(diff(log(ok_px))); r <- r[is.finite(r)]
+  res$jump <- chk("no extreme returns", length(r) == 0 || max(abs(r)) <= max_abs_return,
+                  sprintf("largest |log return| %.3f (maximum %.2f)",
+                          if (length(r)) max(abs(r)) else 0, max_abs_return))
+  zs <- if (length(r)) mean(r == 0) else 0
+  res$zero <- chk("few zero returns", zs <= max_zero_return_share,
+                  sprintf("%.1f%% zero returns (maximum %.1f%%)", 100 * zs, 100 * max_zero_return_share))
+  if (!is.null(max_staleness_days)) {
+    age <- as.numeric(today - max(d))
+    res$stale <- chk("data is recent", age <= max_staleness_days,
+                     sprintf("last date %s, %d days old (maximum %d)", max(d), as.integer(age),
+                             as.integer(max_staleness_days)))
+  }
+  out <- do.call(rbind, res); rownames(out) <- NULL
+  out
+}
+
+assert_valid_prices <- function(prices, ...) {
+  res <- validate_prices(prices, ...)
+  if (!all(res$ok)) {
+    bad <- res[!res$ok, ]
+    stop("Price validation failed:\n",
+         paste0("  - ", bad$check, ": ", bad$detail, collapse = "\n"), call. = FALSE)
+  }
+  invisible(res)
+}

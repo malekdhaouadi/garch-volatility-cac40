@@ -3,7 +3,7 @@ library(yaml)
 library(xts)
 library(zoo)
 
-source("R/utils.R")
+source("R/stats.R")
 cfg <- read_yaml("config.yml")
 set.seed(cfg$seed)
 
