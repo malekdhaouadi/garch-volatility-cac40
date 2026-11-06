@@ -1,28 +1,16 @@
 library(ragg)
 
-# Uses the out-of-sample forecasts saved by R/06_extended_eval.R==
+source("R/stats.R")      # ols_hac()
+
+# Uses the out-of-sample forecasts saved by analysis/06_extended_eval.R:
+#   outputs/ext_iv_comparison_<label>.csv  with columns date, garch, egarch, rv_fwd, implied
+# All quantities are annualized volatility points (%), known at the origin date (forecasts,
+# implied) or measured over the NEXT 21 trading days (rv_fwd), so there is no look-ahead.
 
 H     <- 21
-lags  <- c(20, 40)
+lags  <- c(20, 40)                 # Newey-West lag: 20 = overlap of 21-day windows; 40 = robustness
 files <- c(CAC40    = "outputs/ext_iv_comparison_CAC40.csv",
            STOXX50E = "outputs/ext_iv_comparison_STOXX50E.csv")
-
-#OLS with newy west
-ols_hac <- function(y, X, lag) {
-  X <- cbind(1, X); n <- nrow(X)
-  XtXi <- solve(crossprod(X))
-  b <- as.numeric(XtXi %*% crossprod(X, y))
-  e <- as.numeric(y - X %*% b)
-  u <- X * e
-  S <- crossprod(u) / n
-  for (l in 1:lag) {
-    G <- crossprod(u[(l + 1):n, , drop = FALSE], u[1:(n - l), , drop = FALSE]) / n
-    S <- S + (1 - l / (lag + 1)) * (G + t(G))
-  }
-  V <- n * XtXi %*% S %*% XtXi
-  list(b = b, se = sqrt(diag(V)), n = n,
-       r2 = 1 - sum(e^2) / sum((y - mean(y))^2))
-}
 
 specs <- list(
   "1: implied"          = c("implied"),
@@ -97,6 +85,7 @@ for (lab in names(files)) {
     }
   }
   
+  # ---- Sub-periods (descriptive: few independent windows per period) ----
   cat(sprintf("\n--- %s by sub-period (level regressions, HAC lag 20; descriptive only) ---\n", lab))
   for (pn in names(periods)) {
     s <- d[d$date >= as.Date(periods[[pn]][1]) & d$date <= as.Date(periods[[pn]][2]), ]
@@ -109,6 +98,8 @@ for (lab in names(files)) {
     }
   }
 }
+
+# ---- Outputs ----
 if (length(all_rows)) {
   write.csv(do.call(rbind, all_rows), "outputs/encompassing_regressions.csv", row.names = FALSE)
 }
