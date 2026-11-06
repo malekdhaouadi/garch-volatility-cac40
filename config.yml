@@ -1,7 +1,6 @@
-# config.yml
 index: "^FCHI"
 start_date: "2015-01-01"
-end_date: "2026-10-26"
+end_date: "2026-10-26"  
 distribution: "std"
 forecast_horizon: 30
 rolling_window: 1000
@@ -9,26 +8,23 @@ forecast_length: 500
 refit_every: 50
 seed: 42
 
-# long-sample / VSTOXX / VaR work
 data_start: "2000-01-01"
 eval_start: "2008-01-01"
 var_alphas: [0.01, 0.025, 0.05]
 hs_window: 250
 
-# implied-volatility VaR extension
-iv_var_scaling: 0.8          # initial guess: realized ≈ 0.8 × VSTOXX (levels, from encompassing)
-iv_var_scale_range: [0.60, 1.00]   # grid searched on selection period only
-iv_var_horizon: 1            # 1-day VaR from 1-day implied; 21-day avg used only for the vol comparison
+iv_var_scaling: 0.8
+iv_var_scale_range: [0.60, 1.00]
+iv_var_horizon: 1
 
-# pipeline
 pipeline:
   outputs_dir: "outputs"
   models_dir: "outputs/models"
   cache_dir: "outputs/var_cache"
   log_dir: "logs"
 
-# api
 api:
   port: 8000
-  refit_on_start: false      # API serves the latest saved fit; does NOT refit
+  refit_on_start: false
   max_staleness_days: 5
+

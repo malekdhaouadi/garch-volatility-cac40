@@ -1,11 +1,11 @@
-data/v2tx_history.csv
-data/*.rds
+config.live.yml
+outputs/latest.rds
+outputs/models/
 outputs/*.rds
 outputs/*.csv
 outputs/var_cache/
-outputs/models/
 logs/
+data/prices.rds
+data/returns.rds
+data/v2tx_history.csv
 renv/library/
-.Rhistory
-.RData
-.Rproj.user/

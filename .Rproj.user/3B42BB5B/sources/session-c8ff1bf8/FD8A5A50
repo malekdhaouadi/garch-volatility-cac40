@@ -1,0 +1,26 @@
+{
+    "id": "FD8A5A50",
+    "path": "C:/Users/malek/Desktop/GARCH volatility modelling/R/forecast.R",
+    "project_path": "R/forecast.R",
+    "type": "r_source",
+    "hash": "3906767129",
+    "contents": "",
+    "dirty": false,
+    "created": 1793957320214.0,
+    "source_on_save": false,
+    "relative_order": 3,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "51,0",
+        "scrollLine": "48"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1793957352,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1793957352218,
+    "read_only": false,
+    "read_only_alternatives": []
+}

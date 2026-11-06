@@ -1,0 +1,27 @@
+{
+    "id": "10C88232",
+    "path": "C:/Users/malek/Desktop/GARCH volatility modelling/analysis/10_iv_var.R",
+    "project_path": "analysis/10_iv_var.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1793959594065.0,
+    "source_on_save": false,
+    "relative_order": 16,
+    "properties": {
+        "tempName": "Untitled1",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "94,30",
+        "scrollLine": "80"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1793959717,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1793959717277,
+    "read_only": false,
+    "read_only_alternatives": []
+}
