@@ -139,6 +139,14 @@ In logs, the GARCH coefficient is +0.012 (t = 0.12) and +0.013 (t = 0.14); the E
 
 ![Encompassing regression coefficients](figures/encompassing_coefficients.png)
 
+## Implied-volatility VaR
+
+A direct test of the proportionality finding: k × VSTOXX as a 1-day
+volatility forecast, plugged into a Student-t quantile with the
+baseline ν = 5.19. k is selected on 2008–2016 only, by minimizing
+mean |log(rate/α)| at 1% and 5%. Results on hold-out 2017–2026
+[filled in when you run it].
+
 ## VaR and Expected Shortfall backtest (CAC 40)
 
 1-day-ahead VaR and ES, 4,812 out-of-sample days (2008-01-02 to 2026-10-26). GARCH and EGARCH (Student-t, 1,000-day moving window, refit every 50 days) against a 250-day historical simulation (HS) benchmark. VaR/ES for the Student-t models are computed analytically from the forecast mean, volatility and estimated ν. Tests: Kupiec (unconditional coverage), Christoffersen (independence, conditional coverage), McNeil-Frey ES test (mean of standardized exceedance residuals; one-sided p for ES too optimistic), tick (quantile) loss with Diebold-Mariano.
@@ -218,8 +226,10 @@ Expected exceedances on the hold-out: 25.1 / 62.8 / 125.6.
 renv::restore()
 # place data/v2tx_history.csv (stoxx.com, V2TX "History EUR Price")
 # config.yml: data_start: "2000-01-01", eval_start: "2008-01-01"
-for (f in c("01_data", "02_diagnostics", "03_fits", "04_forecast", "06_extended_eval", "07_var_backtest", "08_var_experiments", "09_encompassing"))
-  source(sprintf("R/%s.R", f))
+for (f in c("01_data", "02_diagnostics", "03_fits", "04_forecast",
+            "06_extended_eval", "07_var_backtest", "08_var_experiments",
+            "09_encompassing", "10_iv_var"))
+  source(sprintf("analysis/%s.R", f))
 ```
 
 Parameters (window, refit frequency, seed, distribution) are in `config.yml`.

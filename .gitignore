@@ -1,6 +1,10 @@
+data/v2tx_history.csv
 data/*.rds
-data/*.csv
 outputs/*.rds
+outputs/*.csv
+outputs/var_cache/
+outputs/models/
+logs/
 renv/library/
 .Rhistory
 .RData
