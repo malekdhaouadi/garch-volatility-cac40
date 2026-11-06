@@ -27,7 +27,7 @@ test_that("ols_hac reproduces the saved encompassing regression (09)", {
   row <- enc[enc$dataset == "STOXX50E" & enc$scale == "vol" &
              enc$spec == "4: implied + GARCH" & enc$term == "garch", ]
   expect_equal(fit$b[3], row$est, tolerance = 1e-6)
-  expect_equal(fit$b[3] / fit$se[3], row$t20, tolerance = 1e-6)
+  expect_equal(unname(fit$b[3] / fit$se[3]), row$t20, tolerance = 1e-6)
 })
 
 test_that("variance risk premium matches the reported numbers (EURO STOXX 50)", {

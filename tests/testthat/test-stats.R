@@ -41,7 +41,7 @@ test_that("dq_test: independent hits pass, autocorrelated hits fail", {
   set.seed(4)
   VaR <- rnorm(4000)
   expect_gt(dq_test(runif(4000) < 0.05, VaR, 0.05), 0.001)
-  clustered <- rep(c(rep(TRUE, 12), rep(FALSE, 228)), 17)
+  clustered <- rep(c(rep(TRUE, 12), rep(FALSE, 228)), 16)
   expect_lt(dq_test(clustered, VaR[seq_along(clustered)], 0.05), 1e-6)
   expect_true(is.na(dq_test(rep(FALSE, 10), rnorm(10), 0.05)))      # too short
 })
