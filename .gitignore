@@ -9,3 +9,4 @@ data/prices.rds
 data/returns.rds
 data/v2tx_history.csv
 renv/library/
+.Rproj.user
